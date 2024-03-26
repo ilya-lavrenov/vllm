@@ -158,11 +158,14 @@ class ModelRunner:
                 # Prefix is not supported with sliding_window
                 computed_len = len(computed_block_nums) * self.block_size
                 prompt_tokens = prompt_tokens[computed_len:]
-                prefix_block_tables.append(computed_block_nums)
+                prefix_block_tables.append(computed_block_nums + seq_group_metadata.block_tables[seq_id])
             else:
-                prefix_block_tables.append([])
+                prefix_block_tables.append([] + seq_group_metadata.block_tables[seq_id])
+            # WA: add user's prompt block_tables indexes to prefix_block_tables and update context_lens respectively,
+            # since OpenVINO GPU Plugin uses PA kernel for prompt processing for now. Should be fixed soon.
+
             # actual prompt lens
-            context_lens.append(computed_len)
+            context_lens.append(computed_len + prompt_len)
             subquery_lens.append(prompt_len - computed_len)
 
             input_tokens.append(prompt_tokens)
@@ -233,6 +236,7 @@ class ModelRunner:
             _pad_to_max(mapping, max_prompt_len, pad=0)
             for mapping in lora_index_mapping
         ]
+        max_context_len = max(context_lens)
         context_lens_tensor = torch.tensor(context_lens,
                                            dtype=torch.int,
                                            device=self.device)
@@ -260,7 +264,7 @@ class ModelRunner:
             prompt_lens=prompt_lens_tensor,
             max_seq_len=max_prompt_len,
             start_loc=start_loc_tensor,
-            max_context_len=None,
+            max_context_len=max_context_len,
             context_lens=context_lens_tensor,
             block_tables=block_tables,
             use_cuda_graph=False,
